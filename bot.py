@@ -1,7 +1,7 @@
 import io
 import os
 import threading
-from flask import Flask
+from flask import Flask, Response
 from google import genai
 import PIL.Image
 import telebot
@@ -20,8 +20,7 @@ MEU_TELEGRAM_ID = 8785567767
 client = genai.Client(api_key=GEMINI_API_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# Variável para guardar a última resposta enviada ao ESP32
-ultima_resposta = "Nenhuma questao processada ainda."
+NOME_ARQUIVO_RESPOSTA = "resposta.txt"
 
 
 # ================= ROTAS DO SERVIDOR (FLASK) =================
@@ -32,7 +31,15 @@ def home():
 
 @app.route("/resposta", methods=["GET"])
 def obter_resposta():
-  return ultima_resposta
+  # Lê o arquivo gravado ou retorna mensagem padrão
+  if os.path.exists(NOME_ARQUIVO_RESPOSTA):
+    with open(NOME_ARQUIVO_RESPOSTA, "r", encoding="utf-8") as f:
+      conteudo = f.read()
+    return Response(conteudo, mimetype="text/plain; charset=utf-8")
+
+  return Response(
+      "Nenhuma questao processada ainda.", mimetype="text/plain; charset=utf-8"
+  )
 
 
 # ================= LÓGICA DO TELEGRAM =================
@@ -52,7 +59,6 @@ def send_welcome(message):
 
 @bot.message_handler(content_types=["photo"])
 def handle_photo(message):
-  global ultima_resposta
   if not usuario_autorizado(message):
     return
 
@@ -91,12 +97,17 @@ def handle_photo(message):
 
     # Processamento via IA Gemini
     response = client.models.generate_content(
-        model="gemini-3.5-flash", contents=[prompt_calculadora, image]
+        model="gemini-2.0-flash", contents=[prompt_calculadora, image]
     )
 
-    # Salva o resultado no servidor e envia no chat do Telegram
-    ultima_resposta = response.text
-    bot.reply_to(message, response.text)
+    texto_resposta = response.text
+
+    # Salva a resposta em arquivo no disco para o Flask/ESP32 lerem sem erro
+    with open(NOME_ARQUIVO_RESPOSTA, "w", encoding="utf-8") as f:
+      f.write(texto_resposta)
+
+    # Envia de volta no chat do Telegram
+    bot.reply_to(message, texto_resposta)
 
   except Exception as e:
     bot.reply_to(message, f"Ocorreu um erro: {e}")
