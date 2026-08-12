@@ -91,7 +91,7 @@ def handle_photo(message):
 
     # Processamento via IA Gemini
     response = client.models.generate_content(
-        model="gemini-1.5-flash", contents=[prompt_calculadora, image]
+        model="gemini-3.5-flash", contents=[prompt_calculadora, image]
     )
 
     # Salva o resultado no servidor e envia no chat do Telegram
