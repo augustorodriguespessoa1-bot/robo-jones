@@ -1,8 +1,9 @@
-from flask import Flask
-import telebot
-from google import genai
-import PIL.Image
+import threading
 import io
+import PIL.Image
+from google import genai
+import telebot
+from flask import Flask
 
 # Inicializa o servidor Web
 app = Flask(__name__)
@@ -14,6 +15,18 @@ MEU_TELEGRAM_ID = 8785567767
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
+
+# Variável para guardar a resposta atual que o ESP32 vai buscar
+ultima_resposta = "Nenhuma questao processada ainda."
+
+# Rotas do Servidor para o ESP32 e para o Render
+@app.route('/')
+def home():
+    return "Servidor do Jones rodando com sucesso!"
+
+@app.route('/resposta', methods=['GET'])
+def obter_resposta():
+    return ultima_resposta
 
 # Função de verificação de segurança
 def usuario_autorizado(message):
@@ -30,6 +43,7 @@ def send_welcome(message):
 
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
+    global ultima_resposta
     if not usuario_autorizado(message):
         return
         
@@ -70,8 +84,19 @@ def handle_photo(message):
             contents=[prompt_calculadora, image]
         )
         
+        # Salva o texto gerado na variável global do servidor para o ESP32 ler
+        ultima_resposta = response.text
+        
+        # Envia de volta no Telegram também
         bot.reply_to(message, response.text)
     except Exception as e:
         bot.reply_to(message, f"Ocorreu um erro: {e}")
 
-bot.polling()
+def rodar_bot():
+    bot.infinity_polling()
+
+# Inicia o Telegram em paralelo para o Render carregar o Flask sem travar
+threading.Thread(target=rodar_bot, daemon=True).start()
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
